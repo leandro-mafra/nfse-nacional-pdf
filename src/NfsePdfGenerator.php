@@ -587,9 +587,31 @@ class NfsePdfGenerator
         $this->pdf->SetXY($col1X, $row2Y);
         $this->pdf->Cell($col1W, 4, 'Descrição do Serviço', 0, 0, 'L');
         $this->pdf->SetFont('helvetica', '', 8);
+        $descricao = str_replace(
+            ["\\r\\n", "\\n", "\\r", "\r\n", "\r"],
+            "\n",
+            (string)$serv['descricao']
+        );
         $this->pdf->SetXY($col2X, $row2Y);
-        $this->pdf->Cell($col2W + $col3W + $col4W, 4, $serv['descricao'], 0, 1, 'L');
-        $this->pdf->Ln(2);
+        $this->pdf->MultiCell(
+            $col2W + $col3W + $col4W,
+            4,
+            $descricao,
+            0,
+            'L',
+            false,
+            1,
+            $col2X,
+            $row2Y,
+            true,
+            0,
+            false,
+            true,
+            0,
+            'T',
+            false
+        );
+        $this->pdf->SetY(max($this->pdf->GetY(), $row2Y + 4) + 2);
     }
 
     private function addTributacao()
