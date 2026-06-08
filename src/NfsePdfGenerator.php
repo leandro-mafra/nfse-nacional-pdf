@@ -66,6 +66,14 @@ class NfsePdfGenerator
         $id = (string)$infNFSe->attributes()->Id;
         // Chave de acesso is the Id value without "NFS" prefix for display
         $chaveAcesso = preg_replace('/^NFS/', '', $id);
+        $opSimpNac = '';
+        $regApTribSN = '';
+        if (isset($dps->prest) && isset($dps->prest->regTrib) && isset($dps->prest->regTrib->opSimpNac)) {
+            $opSimpNac = (string)$dps->prest->regTrib->opSimpNac;
+        }
+        if (isset($dps->prest) && isset($dps->prest->regTrib) && isset($dps->prest->regTrib->regApTribSN)) {
+            $regApTribSN = (string)$dps->prest->regTrib->regApTribSN;
+        }
 
         $this->data = [
             'chaveAcesso' => $chaveAcesso,
@@ -79,6 +87,7 @@ class NfsePdfGenerator
             'emitente' => [
                 'cnpj' => $this->formatCnpjCpf((string)$infNFSe->emit->CNPJ),
                 'nome' => (string)$infNFSe->emit->xNome,
+                'IM' => (string)($infNFSe->emit->IM ?? ''),
                 'logradouro' => (string)$infNFSe->emit->enderNac->xLgr,
                 'numero' => (string)$infNFSe->emit->enderNac->nro,
                 'bairro' => (string)$infNFSe->emit->enderNac->xBairro,
@@ -89,14 +98,18 @@ class NfsePdfGenerator
                 'email' => (string)$infNFSe->emit->email,
             ],
             'tomador' => [
-                'cnpj' => $this->formatCnpjCpf((string)$dps->toma->CNPJ),
+                'cnpj' => $this->formatCnpjCpf((string)((($dps->toma->CNPJ ?? $dps->toma->CPF) ?? $dps->toma->NIF) ?? '-')),
                 'nome' => (string)$dps->toma->xNome,
-                'logradouro' => (string)$dps->toma->end->endNac->xLgr,
-                'numero' => (string)$dps->toma->end->endNac->nro,
-                'complemento' => (string)$dps->toma->end->endNac->xCpl,
-                'bairro' => (string)$dps->toma->end->endNac->xBairro,
-                'municipio' => (string)$dps->toma->end->endNac->cMun,
-                'cep' => $this->formatCep((string)$dps->toma->end->endNac->CEP),
+                'IM' => (string)($dps->toma->IM ?? ''),
+                'email' => (string)$dps->toma->email,
+                'logradouro' => (string)$dps->toma->end->xLgr,
+                'numero' => (string)$dps->toma->end->nro,
+                'complemento' => (string)$dps->toma->end->xCpl,
+                'bairro' => (string)$dps->toma->end->xBairro,
+                'municipio' => (string)(($dps->toma->end->endNac->cMun ?? $dps->toma->end->endExt->cMun) ?? ''),
+                'uf' => (string)$infNFSe->emit->enderNac->UF,
+                'cep' => $this->formatCep((string)(($dps->toma->end->endNac->CEP ?? $dps->toma->end->endExt->CEP) ?? '')),
+                'fone' => $this->formatPhone((string)$dps->toma->fone),
             ],
             'servico' => [
                 'codTribNac' => (string)$dps->serv->cServ->cTribNac,
@@ -119,6 +132,8 @@ class NfsePdfGenerator
                 'totTribFed' => (float)$dps->valores->trib->totTrib->pTotTrib->pTotTribFed,
                 'totTribEst' => (float)$dps->valores->trib->totTrib->pTotTrib->pTotTribEst,
                 'totTribMun' => (float)$dps->valores->trib->totTrib->pTotTrib->pTotTribMun,
+                'opSimpNac' => $opSimpNac,
+                'regApTribSN' => $regApTribSN,
             ],
         ];
 
@@ -382,7 +397,7 @@ class NfsePdfGenerator
         $this->pdf->SetXY($col2X, $startY + 4);
         $this->pdf->Cell($col2W, 4, $emit['cnpj'], 0, 0, 'L');
         $this->pdf->SetXY($col3X, $startY + 4);
-        $this->pdf->Cell($col3W, 4, '-', 0, 0, 'L');
+        $this->pdf->Cell($col3W, 4, $this->data['emitente']['IM'], 0, 0, 'L');
         $this->pdf->SetXY($col4X, $startY + 4);
         $this->pdf->Cell($col4W, 4, $emit['fone'], 0, 1, 'L');
 
@@ -422,6 +437,7 @@ class NfsePdfGenerator
         $this->pdf->SetXY($col4X, $row3Y);
         $this->pdf->Cell($col4W, 4, 'CEP', 0, 1, 'L');
 
+
         // Data row
         $this->pdf->SetFont('helvetica', '', 8);
         $this->pdf->SetXY($col1X, $row3Y + 4);
@@ -434,14 +450,31 @@ class NfsePdfGenerator
         $this->pdf->Cell($col4W, 4, $emit['cep'], 0, 1, 'L');
 
         $this->pdf->SetFont('helvetica', '', 8);
+        $opSimpNacMap = [
+            '1' => 'Não Optante',
+            '2' => 'Optante - Microempreendedor Individual (MEI)',
+            '3' => 'Optante - Microempresa ou Empresa de Pequeno Porte (ME/EPP)',
+        ];
+        $regApTribSNMap = [
+            1 => 'Regime de apuração dos tributos federais e municipal pelo SN',
+            2 => 'Regime de apuração dos tributos federais pelo SN e o ISSQN pela NFS-e conforme respectiva legislação municipal do tributo',
+            3 => 'Regime de apuração dos tributos federais e municipal pela NFS-e conforme respectivas legilações federal e municipal de cada tributo',
+        ];
+        $opSimpNac = (string)($this->data['tributacao']['opSimpNac'] ?? '');
+        $regApTribSN = (string)($this->data['tributacao']['regApTribSN'] ?? '');
+        $descricaoSimplesNacional = $opSimpNacMap[$opSimpNac] ?? $opSimpNacMap['1'];
+        $descricaoRegApTribSN = $regApTribSNMap[$regApTribSN] ?? '-';
+
         $this->pdf->SetXY($col1X, $this->pdf->GetY());
         $this->pdf->Cell($col1W, 4, 'Simples Nacional na Data de Competência', 0, 0, 'L');
         $this->pdf->SetXY($col3X, $this->pdf->GetY());
         $this->pdf->Cell($col3W + $col4W, 4, 'Regime de Apuração Tributária pelo SN', 0, 1, 'L');
-        $this->pdf->SetXY($col1X, $this->pdf->GetY());
-        $this->pdf->Cell($col1W, 4, 'Optante - Microempresa ou Empresa de Pequeno Porte (ME/EPP)', 0, 0, 'L');
-        $this->pdf->SetXY($col3X, $this->pdf->GetY());
-        $this->pdf->Cell($col3W + $col4W, 4, 'Regime de apuração dos tributos federais e municipal pelo Simples Nacional', 0, 1, 'L');
+        $rowY = $this->pdf->GetY();
+        $this->pdf->SetXY($col1X, $rowY);
+        $this->pdf->Cell($col1W, 4, $descricaoSimplesNacional, 0, 0, 'L');
+        $this->pdf->SetXY($col3X, $rowY);
+        $this->pdf->MultiCell($col3W + $col4W, 4, $descricaoRegApTribSN, 0, 'L', false, 1, $col3X, $rowY);
+        $this->pdf->SetY(max($this->pdf->GetY(), $rowY + 4));
         $this->pdf->Ln(1);
     }
 
@@ -477,9 +510,9 @@ class NfsePdfGenerator
         $this->pdf->SetXY($col2X, $startY + 4);
         $this->pdf->Cell($col2W, 4, $toma['cnpj'], 0, 0, 'L');
         $this->pdf->SetXY($col3X, $startY + 4);
-        $this->pdf->Cell($col3W, 4, '-', 0, 0, 'L');
+        $this->pdf->Cell($col3W, 4, $this->data['tomador']['IM'], 0, 0, 'L');
         $this->pdf->SetXY($col4X, $startY + 4);
-        $this->pdf->Cell($col4W, 4, '', 0, 1, 'L');
+        $this->pdf->Cell($col4W, 4, $this->data['tomador']['fone'], 0, 1, 'L');
 
         // Header row
         $row2Y = $this->pdf->GetY();
@@ -500,7 +533,7 @@ class NfsePdfGenerator
         $this->pdf->SetXY($col2X, $row2Y + 4);
         $this->pdf->Cell($col2W, 4, '', 0, 0, 'L');
         $this->pdf->SetXY($col3X, $row2Y + 4);
-        $this->pdf->Cell($col3W, 4, '-', 0, 0, 'L');
+        $this->pdf->Cell($col3W, 4, $this->data['tomador']['email'], 0, 0, 'L');
         $this->pdf->SetXY($col4X, $row2Y + 4);
         $this->pdf->Cell($col4W, 4, '', 0, 1, 'L');
 
@@ -529,7 +562,8 @@ class NfsePdfGenerator
         $this->pdf->SetXY($col2X, $row3Y + 4);
         $this->pdf->Cell($col2W, 4, '', 0, 0, 'L');
         $this->pdf->SetXY($col3X, $row3Y + 4);
-        $this->pdf->Cell($col3W, 4, $this->data['localIncidencia'], 0, 0, 'L');
+        $this->pdf->Cell($col3W, 4, '-', 0, 0, 'L');
+        // $this->pdf->Cell($col3W, 4, $this->data['tomador']['municipio'], 0, 0, 'L');
         $this->pdf->SetXY($col4X, $row3Y + 4);
         $this->pdf->Cell($col4W, 4, $toma['cep'], 0, 1, 'L');
         $this->pdf->Ln(2);
